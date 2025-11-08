@@ -7,7 +7,8 @@ This repository hosts the very first slice of Cultura: a meaning-first search le
 - **Entity cards** that surface attention/momentum/controversy metrics, adjacency tags, sparklines, and sample receipts.
 - **Entity insight panel** (desktop) plus a mobile drawer that expands receipts, communities, and related clusters.
 - **Static mock dataset** (`src/data/entities.ts`) mirroring the structures defined in the design spec so we can swap in a real API later without touching the UI.
-- **Search-focused homepage** with quick query preview, bubble map visualization, and rising discourse board (all mocked).
+- **Search-focused homepage** with quick query preview, responsive bubble map, and rising discourse board (all mocked).
+- **Bubble map module** centered on the landing page with filter chips, theme-aware gradients, and per-node spotlights.
 - **Light/dark theme toggle** shared by the header navigation for Home ↔ Lens.
 
 ## Local development
@@ -28,12 +29,13 @@ src/
     lens/page.tsx   # Full Search Lens experience
     globals.css     # Tailwind + theme tokens
   components/
-    bubble-map.tsx
-    search-preview.tsx
-    search-lens/    # Cards, drawer, sparkline, source metadata
+    bubble-map.tsx      # Responsive, filterable bubble visualization
+    search-preview.tsx  # Homepage search teaser
+    search-lens/        # Cards, drawer, sparkline, source metadata
     site-header.tsx & theme-toggle.tsx
   data/
-    entities.ts     # Mock entities/receipts dataset
+    entities.ts         # Mock entities/receipts dataset
+    bubble-map.ts       # Mock adjacency weights for the map
 ```
 Additional product context lives in `docs/design document.md` (the original v1 spec).
 
