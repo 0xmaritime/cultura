@@ -184,14 +184,14 @@ export default function BubbleMap() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {filterOptions.map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setFilter(option.id)}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition",
+              "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-medium transition",
               filter === option.id
                 ? "bg-[var(--foreground)] text-[var(--background)]"
                 : "border-[var(--border)]/80 text-[var(--foreground)]/70 hover:text-[var(--foreground)]"
@@ -219,7 +219,7 @@ export default function BubbleMap() {
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 md:gap-4">
         <QuickStat label="Visible clusters" value={stats.count.toString()} />
         <QuickStat
           label="Avg. momentum"
@@ -231,11 +231,11 @@ export default function BubbleMap() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,_1.5fr)_minmax(0,_0.9fr)]">
         <div
           ref={containerRef}
           className={clsx(
-            "relative overflow-hidden rounded-[2rem] border border-[var(--border)]/70 p-4 shadow-xl",
+            "relative overflow-hidden rounded-[1.25rem] border border-[var(--border)]/70 p-3 shadow-xl sm:rounded-[2rem] sm:p-6",
             `bg-gradient-to-b ${backgroundClass}`
           )}
         >
@@ -309,7 +309,7 @@ export default function BubbleMap() {
           </svg>
 
           {activeNode && (
-            <div className="pointer-events-auto absolute left-6 top-6 max-w-[260px] rounded-2xl border border-white/30 bg-black/40 p-4 text-white backdrop-blur dark:bg-black/60">
+            <div className="pointer-events-auto absolute left-4 top-4 max-w-[260px] rounded-2xl border border-white/25 bg-black/40 p-3 text-white backdrop-blur sm:left-6 sm:top-6 sm:p-4 dark:bg-black/60">
               <p className="text-[0.65rem] uppercase tracking-[0.3em] text-white/60">Now viewing</p>
               <p className="text-lg font-semibold">{activeNode.entity.name}</p>
               <p className="text-xs text-white/70">{activeNode.entity.lastPulse}</p>
@@ -317,9 +317,9 @@ export default function BubbleMap() {
           )}
         </div>
 
-        <div className="rounded-[2rem] border border-[var(--border)]/70 bg-[var(--card)]/90 p-6 backdrop-blur">
+        <div className="rounded-[1.5rem] border border-[var(--border)]/70 bg-[var(--card)]/90 p-5 backdrop-blur sm:rounded-[2rem] sm:p-6">
           {activeNode ? (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-[var(--foreground)]/70">
                 <span className="inline-flex items-center gap-2">
                   <Compass className="h-4 w-4" /> Spotlight
@@ -429,7 +429,7 @@ type QuickStatProps = {
 
 function QuickStat({ label, value }: QuickStatProps) {
   return (
-    <div className="rounded-2xl border border-[var(--border)]/70 bg-white/70 px-4 py-3 text-sm dark:bg-black/40">
+    <div className="h-full rounded-2xl border border-[var(--border)]/70 bg-white/70 px-4 py-3 text-sm dark:bg-black/40">
       <p className="text-[0.65rem] uppercase tracking-[0.3em] text-[var(--foreground)]/60 dark:text-white/70">
         {label}
       </p>
