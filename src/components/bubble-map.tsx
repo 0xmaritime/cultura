@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { useTheme } from "next-themes";
 import { Compass, Radar } from "lucide-react";
+import Sparkline from "@/components/search-lens/sparkline";
+import { sourceMeta } from "@/components/search-lens/source-meta";
+import type { Entity } from "@/data/entities";
 import { entities } from "@/data/entities";
 import { bubbleLinks } from "@/data/bubble-map";
-import Sparkline from "@/components/search-lens/sparkline";
 
-const width = 900;
-const height = 520;
+const DEFAULT_WIDTH = 900;
+const DEFAULT_HEIGHT = 520;
 
 const filterOptions = [
   { id: "all", label: "All attention" },
@@ -26,14 +28,38 @@ type LayoutNode = {
   x: number;
   y: number;
   radius: number;
-  entity: (typeof entities)[number];
+  entity: Entity;
 };
 
-const matchesFilter = (entity: (typeof entities)[number], filter: FilterKey) => {
-  if (filter === "surging") return entity.momentumStatus === "surging";
-  if (filter === "steady") return entity.momentumStatus === "steady";
-  if (filter === "cooling") return entity.momentumStatus === "cooling";
-  if (filter === "controversial") return entity.metrics.controversy >= 0.55;
+const countsByFilter = filterOptions.reduce<Record<FilterKey, number>>((acc, option) => {
+  acc[option.id] = countEntitiesForFilter(option.id);
+  return acc;
+}, {} as Record<FilterKey, number>);
+
+function countEntitiesForFilter(filter: FilterKey) {
+  if (filter === "all") return entities.length;
+  if (filter === "controversial") {
+    return entities.filter((entity) => entity.metrics.controversy >= 0.55).length;
+  }
+  return entities.filter((entity) => entity.momentumStatus === filter).length;
+}
+
+const typeLegend = Array.from(
+  entities.reduce((map, entity) => {
+    const current = map.get(entity.type) ?? { count: 0, color: entity.palette[0] };
+    current.count += 1;
+    map.set(entity.type, current);
+    return map;
+  }, new Map<string, { count: number; color: string }>())
+).map(([type, meta]) => ({ type, ...meta }));
+
+const matchesFilter = (entity: Entity, filter: FilterKey) => {
+  if (filter === "surging" || filter === "steady" || filter === "cooling") {
+    return entity.momentumStatus === filter;
+  }
+  if (filter === "controversial") {
+    return entity.metrics.controversy >= 0.55;
+  }
   return true;
 };
 
@@ -41,30 +67,58 @@ export default function BubbleMap() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
-  const baseLayout = useMemo<LayoutNode[]>(() => {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setContainer(node);
+  }, []);
+
+  useEffect(() => {
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const width = entry.contentRect.width;
+      const height = Math.max(420, width * 0.6);
+      setViewport({ width, height });
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [container]);
+
+  const baseLayout = useMemo(() => {
+    const { width, height } = viewport;
     const centerX = width / 2;
     const centerY = height / 2;
-    const rings = [0, 170, 260];
+    const maxRadius = Math.min(width, height) * 0.42;
+    const computedRings = [0, maxRadius * 0.55, maxRadius];
 
-    return entities.map((entity, index) => {
-      const ring = rings[index % rings.length];
+    const nodes: LayoutNode[] = entities.map((entity, index) => {
+      const ringIndex = index % computedRings.length;
       const theta = (index / entities.length) * Math.PI * 2;
-      const x = centerX + Math.cos(theta) * ring;
-      const y = centerY + Math.sin(theta) * ring;
+      const x = centerX + Math.cos(theta) * computedRings[ringIndex];
+      const y = centerY + Math.sin(theta) * computedRings[ringIndex];
       const radius = 30 + entity.metrics.attention * 55;
       return { id: entity.id, entity, x, y, radius };
     });
-  }, []);
+
+    return nodes;
+  }, [viewport]);
 
   const [filter, setFilter] = useState<FilterKey>("all");
   const [activeId, setActiveId] = useState(baseLayout[0]?.id ?? "");
 
-  const visibleNodes = useMemo(() => baseLayout.filter((node) => matchesFilter(node.entity, filter)), [baseLayout, filter]);
+  const visibleNodes = useMemo(
+    () => baseLayout.filter((node) => matchesFilter(node.entity, filter)),
+    [baseLayout, filter]
+  );
 
   const activeNodeId = visibleNodes.some((node) => node.id === activeId)
     ? activeId
-    : visibleNodes[0]?.id ?? baseLayout[0]?.id ?? "";
-  const activeNode = visibleNodes.find((node) => node.id === activeNodeId) ?? visibleNodes[0] ?? null;
+    : visibleNodes[0]?.id ?? "";
+  const activeNode = visibleNodes.find((node) => node.id === activeNodeId) ?? null;
 
   const nodeMap = useMemo(() => new Map(baseLayout.map((node) => [node.id, node])), [baseLayout]);
   const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
@@ -75,16 +129,18 @@ export default function BubbleMap() {
         const source = nodeMap.get(link.source);
         const target = nodeMap.get(link.target);
         if (!source || !target) return null;
-        const visible = visibleIds.has(source.id) && visibleIds.has(target.id);
-        return visible ? { id: `${link.source}-${link.target}`, weight: link.weight, source, target } : null;
+        if (!visibleIds.has(source.id) || !visibleIds.has(target.id)) return null;
+        const highlighted = source.id === activeNodeId || target.id === activeNodeId;
+        return { id: `${link.source}-${link.target}`, source, target, weight: link.weight, highlighted };
       })
       .filter(Boolean) as {
       id: string;
-      weight: number;
       source: LayoutNode;
       target: LayoutNode;
+      weight: number;
+      highlighted: boolean;
     }[];
-  }, [nodeMap, visibleIds]);
+  }, [nodeMap, visibleIds, activeNodeId]);
 
   const connected = useMemo(() => {
     if (!activeNode) return [];
@@ -101,47 +157,65 @@ export default function BubbleMap() {
 
   const stats = useMemo(() => {
     if (!visibleNodes.length) {
-      return { count: 0, avgMomentum: 0, avgControversy: 0 };
+      return { count: 0, momentum: 0, controversy: 0 };
     }
-    const count = visibleNodes.length;
-    const avgMomentum =
-      visibleNodes.reduce((sum, node) => sum + node.entity.metrics.momentum, 0) / visibleNodes.length;
-    const avgControversy =
-      visibleNodes.reduce((sum, node) => sum + node.entity.metrics.controversy, 0) / visibleNodes.length;
-    return { count, avgMomentum, avgControversy };
+    const sumMomentum = visibleNodes.reduce((sum, node) => sum + node.entity.metrics.momentum, 0);
+    const sumControversy = visibleNodes.reduce((sum, node) => sum + node.entity.metrics.controversy, 0);
+    return {
+      count: visibleNodes.length,
+      momentum: sumMomentum / visibleNodes.length,
+      controversy: sumControversy / visibleNodes.length,
+    };
   }, [visibleNodes]);
 
   const backgroundClass = isDark
     ? "from-[#07060f] via-[#05040c] to-[#03030a]"
-    : "from-[#fff5fb] via-[#f7fbff] to-[#ffffff]";
+    : "from-[#fff8fb] via-[#f5fbff] to-[#ffffff]";
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.4em] text-[var(--foreground)]/70">Bubble map</p>
           <h2 className="text-3xl font-semibold text-[var(--foreground)]">Attention graph (mocked)</h2>
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
-          <Radar className="h-4 w-4" /> Reacts to filter + theme · static dataset
+          <Radar className="h-4 w-4" /> Responsive · theme-aware · sample data
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         {filterOptions.map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setFilter(option.id)}
             className={clsx(
-              "rounded-full border px-4 py-1.5 text-sm transition",
+              "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition",
               filter === option.id
                 ? "bg-[var(--foreground)] text-[var(--background)]"
                 : "border-[var(--border)]/80 text-[var(--foreground)]/70 hover:text-[var(--foreground)]"
             )}
           >
             {option.label}
+            <span className="text-xs opacity-75">{countsByFilter[option.id]}</span>
           </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-xs text-[var(--foreground)]/70">
+        {typeLegend.map((item) => (
+          <span
+            key={item.type}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--border)]/70 px-3 py-1"
+            style={{ backgroundColor: `${item.color}1a` }}
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ background: item.color }}
+            />
+            {item.type} · {item.count}
+          </span>
         ))}
       </div>
 
@@ -149,54 +223,53 @@ export default function BubbleMap() {
         <QuickStat label="Visible clusters" value={stats.count.toString()} />
         <QuickStat
           label="Avg. momentum"
-          value={`${stats.avgMomentum >= 0 ? "+" : ""}${(stats.avgMomentum * 100).toFixed(0)}%`}
+          value={`${stats.momentum >= 0 ? "+" : ""}${(stats.momentum * 100).toFixed(0)}%`}
         />
         <QuickStat
           label="Avg. controversy"
-          value={`${(stats.avgControversy * 100).toFixed(0)}%`}
+          value={`${(stats.controversy * 100).toFixed(0)}%`}
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
         <div
+          ref={containerRef}
           className={clsx(
             "relative overflow-hidden rounded-[2rem] border border-[var(--border)]/70 p-4 shadow-xl",
             `bg-gradient-to-b ${backgroundClass}`
           )}
         >
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Entity bubble map">
+          <svg
+            viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+            className="w-full"
+            role="img"
+            aria-label="Entity bubble map"
+          >
             <defs>
               {baseLayout.map((node) => (
                 <radialGradient key={`grad-${node.id}`} id={`grad-${node.id}`} cx="30%" cy="30%" r="70%">
                   <stop offset="0%" stopColor={node.entity.palette[0]} stopOpacity="0.95" />
-                  <stop offset="100%" stopColor={node.entity.palette[1]} stopOpacity="0.6" />
+                  <stop offset="100%" stopColor={node.entity.palette[1]} stopOpacity="0.55" />
                 </radialGradient>
               ))}
-            </defs>
-
-            {edges.map((edge) => {
-              const highlighted =
-                edge.source.id === activeNodeId || edge.target.id === activeNodeId;
-              return (
-                <line
-                  key={edge.id}
-                  x1={edge.source.x}
-                  y1={edge.source.y}
-                  x2={edge.target.x}
-                  y2={edge.target.y}
-                  stroke={highlighted ? "url(#edge-highlight)" : `rgba(255,255,255,${isDark ? 0.06 : 0.18})`}
-                  strokeWidth={highlighted ? 3 : 1.4}
-                  strokeOpacity={highlighted ? 0.9 : 0.6}
-                />
-              );
-            })}
-
-            <defs>
               <linearGradient id="edge-highlight" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#f472b6" />
                 <stop offset="100%" stopColor="#34d399" />
               </linearGradient>
             </defs>
+
+            {edges.map((edge) => (
+              <line
+                key={edge.id}
+                x1={edge.source.x}
+                y1={edge.source.y}
+                x2={edge.target.x}
+                y2={edge.target.y}
+                stroke={edge.highlighted ? "url(#edge-highlight)" : `rgba(255,255,255,${isDark ? 0.08 : 0.18})`}
+                strokeWidth={edge.highlighted ? 3 : 1.2}
+                strokeOpacity={edge.highlighted ? 0.9 : 0.6}
+              />
+            ))}
 
             {baseLayout.map((node) => {
               const isVisible = visibleIds.has(node.id);
@@ -221,22 +294,27 @@ export default function BubbleMap() {
                     x={node.x}
                     y={node.y}
                     className={clsx(
-                      "select-none text-center text-[0.65rem] font-semibold tracking-[0.25em]",
-                      isDark ? "fill-white/80" : "fill-black/70",
+                      "select-none text-center text-[0.6rem] font-semibold tracking-[0.25em]",
+                      isDark ? "fill-white/70" : "fill-black/60",
                       isActive && "fill-white"
                     )}
                     textAnchor="middle"
                     dy="0.35em"
                   >
-                    {node.entity.name.toUpperCase().slice(0, 14)}
+                    {node.entity.name.toUpperCase().slice(0, 16)}
                   </text>
                 </g>
               );
             })}
           </svg>
-          <div className="pointer-events-none absolute inset-x-0 bottom-4 text-center text-xs text-white/70">
-            Hover a node to inspect its receipts
-          </div>
+
+          {activeNode && (
+            <div className="pointer-events-auto absolute left-6 top-6 max-w-[260px] rounded-2xl border border-white/30 bg-black/40 p-4 text-white backdrop-blur dark:bg-black/60">
+              <p className="text-[0.65rem] uppercase tracking-[0.3em] text-white/60">Now viewing</p>
+              <p className="text-lg font-semibold">{activeNode.entity.name}</p>
+              <p className="text-xs text-white/70">{activeNode.entity.lastPulse}</p>
+            </div>
+          )}
         </div>
 
         <div className="rounded-[2rem] border border-[var(--border)]/70 bg-[var(--card)]/90 p-6 backdrop-blur">
@@ -255,6 +333,29 @@ export default function BubbleMap() {
                 {activeNode.entity.summary}
               </p>
 
+              <div className="grid gap-3 sm:grid-cols-3">
+                <MetricBar
+                  label="Attention"
+                  value={`${Math.round(activeNode.entity.metrics.attention * 100)}%`}
+                  percent={activeNode.entity.metrics.attention}
+                  accent={activeNode.entity.palette[0]}
+                />
+                <MetricBar
+                  label="Momentum"
+                  value={`${activeNode.entity.metrics.momentum >= 0 ? "+" : ""}${Math.round(
+                    activeNode.entity.metrics.momentum * 100
+                  )}%`}
+                  percent={(activeNode.entity.metrics.momentum + 1) / 2}
+                  accent="#34d399"
+                />
+                <MetricBar
+                  label="Controversy"
+                  value={`${Math.round(activeNode.entity.metrics.controversy * 100)}%`}
+                  percent={activeNode.entity.metrics.controversy}
+                  accent="#f472b6"
+                />
+              </div>
+
               <div className="rounded-2xl border border-[var(--border)]/70 bg-white/70 p-3 dark:bg-black/40">
                 <Sparkline
                   data={activeNode.entity.sparkline}
@@ -266,39 +367,47 @@ export default function BubbleMap() {
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Metric label="Attention" value={`${Math.round(activeNode.entity.metrics.attention * 100)}%`} />
-                <Metric
-                  label="Momentum"
-                  value={`${activeNode.entity.metrics.momentum >= 0 ? "+" : ""}${Math.round(
-                    activeNode.entity.metrics.momentum * 100
-                  )}%`}
-                />
-                <Metric label="Controversy" value={`${Math.round(activeNode.entity.metrics.controversy * 100)}%`} />
-              </div>
-
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-[var(--foreground)]/60">Connected clusters</p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-3 space-y-2">
+                  {connected.length === 0 && (
+                    <p className="text-xs text-[var(--foreground)]/60">No direct links in the mock graph.</p>
+                  )}
                   {connected.map(({ node, weight }) => (
-                    <span
+                    <div
                       key={node.id}
-                      className="rounded-full border border-[var(--border)]/70 px-3 py-1 text-xs text-[var(--foreground)]/80"
+                      className="flex items-center justify-between rounded-xl border border-[var(--border)]/60 px-3 py-2 text-xs text-[var(--foreground)]/80"
                     >
-                      {node.entity.name} · {Math.round(weight * 100)}%
-                    </span>
+                      <span>{node.entity.name}</span>
+                      <span className="font-semibold">{Math.round(weight * 100)}%</span>
+                    </div>
                   ))}
                 </div>
               </div>
 
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--foreground)]/60">Communities</p>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--foreground)]/80">
-                  {activeNode.entity.communities.map((community) => (
-                    <span key={community} className="rounded-full border border-[var(--border)]/70 px-3 py-1">
-                      {community}
-                    </span>
-                  ))}
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--foreground)]/60">Recent receipts</p>
+                <div className="mt-2 space-y-3">
+                  {activeNode.entity.receipts.slice(0, 2).map((receipt) => {
+                    const meta = sourceMeta[receipt.source];
+                    const Icon = meta.Icon;
+                    return (
+                      <div
+                        key={receipt.title}
+                        className="flex items-start gap-3 rounded-2xl border border-[var(--border)]/60 px-3 py-2 text-sm"
+                      >
+                        <span className="rounded-2xl bg-black/5 p-2 dark:bg-white/10">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="text-left">
+                          <p className="font-semibold text-[var(--foreground)] dark:text-white">{receipt.title}</p>
+                          <p className="text-xs text-[var(--foreground)]/70 dark:text-white/70">
+                            {meta.label} · {receipt.context}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -310,22 +419,6 @@ export default function BubbleMap() {
         </div>
       </div>
     </section>
-  );
-}
-
-type MetricProps = {
-  label: string;
-  value: string;
-};
-
-function Metric({ label, value }: MetricProps) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)]/80 bg-white/70 p-3 text-[var(--foreground)] shadow-sm dark:bg-black/40 dark:text-white">
-      <p className="text-[0.65rem] uppercase tracking-[0.3em] text-[var(--foreground)]/60 dark:text-white/70">
-        {label}
-      </p>
-      <p className="text-xl font-semibold">{value}</p>
-    </div>
   );
 }
 
@@ -341,6 +434,31 @@ function QuickStat({ label, value }: QuickStatProps) {
         {label}
       </p>
       <p className="text-2xl font-semibold text-[var(--foreground)] dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+type MetricBarProps = {
+  label: string;
+  value: string;
+  percent: number;
+  accent: string;
+};
+
+function MetricBar({ label, value, percent, accent }: MetricBarProps) {
+  const clamped = Math.min(Math.max(percent, 0), 1);
+  return (
+    <div className="space-y-1 rounded-2xl border border-[var(--border)]/70 bg-white/70 p-3 text-sm dark:bg-black/40">
+      <div className="flex items-center justify-between text-xs text-[var(--foreground)]/70 dark:text-white/70">
+        <span>{label}</span>
+        <span className="font-semibold text-[var(--foreground)] dark:text-white">{value}</span>
+      </div>
+      <div className="h-2 rounded-full bg-black/5 dark:bg-white/10">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${clamped * 100}%`, background: accent }}
+        />
+      </div>
     </div>
   );
 }

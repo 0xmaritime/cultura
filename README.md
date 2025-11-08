@@ -8,7 +8,7 @@ This repository hosts the very first slice of Cultura: a meaning-first search le
 - **Entity insight panel** (desktop) plus a mobile drawer that expands receipts, communities, and related clusters.
 - **Static mock dataset** (`src/data/entities.ts`) mirroring the structures defined in the design spec so we can swap in a real API later without touching the UI.
 - **Search-focused homepage** with quick query preview, responsive bubble map, and rising discourse board (all mocked).
-- **Bubble map module** centered on the landing page with filter chips, theme-aware gradients, and per-node spotlights.
+- **Bubble map module** centered on the landing page with responsive sizing, filter counts, entity-type legend, and a richer spotlight panel (sparklines + receipts).
 - **Light/dark theme toggle** shared by the header navigation for Home ↔ Lens.
 
 ## Local development
