@@ -40,7 +40,7 @@ export type Entity = {
   adjacency: string[];
   receipts: Receipt[];
   related: string[];
-  color: string;
+  palette: [string, string];
 };
 
 export const entities: Entity[] = [
@@ -81,7 +81,7 @@ export const entities: Entity[] = [
       },
     ],
     related: ["Carnivore diet", "Metabolic flexibility", "Cold plunges"],
-    color: "from-amber-300/70 to-rose-300/70",
+    palette: ["#fb923c", "#fb7185"],
   },
   {
     id: "anora",
@@ -120,7 +120,7 @@ export const entities: Entity[] = [
       },
     ],
     related: ["Dasha Nekrasova", "Sofia Coppola", "Messy girl canon"],
-    color: "from-purple-300/60 to-pink-300/60",
+    palette: ["#c084fc", "#f472b6"],
   },
   {
     id: "ai-doom",
@@ -159,7 +159,7 @@ export const entities: Entity[] = [
       },
     ],
     related: ["OpenAI board drama", "Techno-optimism", "AI existential risk"],
-    color: "from-cyan-300/70 to-emerald-300/70",
+    palette: ["#22d3ee", "#34d399"],
   },
   {
     id: "vibe-shift",
@@ -198,7 +198,7 @@ export const entities: Entity[] = [
       },
     ],
     related: ["Analog film", "Indie sleaze", "Third place revival"],
-    color: "from-sky-300/60 to-indigo-300/60",
+    palette: ["#38bdf8", "#818cf8"],
   },
   {
     id: "cottagecore",
@@ -237,7 +237,7 @@ export const entities: Entity[] = [
       },
     ],
     related: ["Fairycore", "Slow fashion", "Fantasy B&B"],
-    color: "from-emerald-200/70 to-lime-200/70",
+    palette: ["#86efac", "#bef264"],
   },
   {
     id: "ozempic-style",
@@ -276,6 +276,6 @@ export const entities: Entity[] = [
       },
     ],
     related: ["GLP-1 economy", "Metabolic clinics", "Corporate wellness"],
-    color: "from-rose-200/70 to-orange-200/70",
+    palette: ["#fb7185", "#fdba74"],
   },
 ];
